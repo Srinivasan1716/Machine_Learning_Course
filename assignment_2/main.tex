@@ -1,0 +1,424 @@
+
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{longtable}
+
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{ICS1512}
+\rhead{Machine Learning Algorithms Laboratory}
+\cfoot{\thepage}
+
+\lstset{
+language=Python,
+basicstyle=\ttfamily\small,
+numbers=left,
+frame=single,
+breaklines=true,
+showstringspaces=false
+}
+
+\begin{document}
+
+\begin{tabular}{|p{4cm}|p{11cm}|}
+\hline
+Experiment No. & 2 \\ \hline
+Experiment Title & Spam Classification using Naive Bayes and K-Nearest Neighbors (KNN)
+\footnote{\textbf{GitHub Repository: }\url{https://github.com/Srinivasan1716/Machine_Learning_Course}}\\ \hline
+Student Name & Srinivasan M \\ \hline
+Register Number & 3122247001063 \\ \hline
+Faculty & Dr. Poreddy Ajay Kumar Reddy \\ \hline
+Submission Date & \today \\ \hline
+\end{tabular}
+
+\section{Objective}
+To implement and evaluate Naive Bayes (Gaussian, Multinomial, and Bernoulli variants) and K-Nearest Neighbors (KNN) classifiers on the Spambase dataset. The objective includes:
+\begin{itemize}
+    \item Performing Exploratory Data Analysis (EDA) to understand feature distributions and class distributions.
+    \item Rescaling features using MinMax normalization and preparing the dataset via stratified train-test splits.
+    \item Training and evaluating the performance of Gaussian, Multinomial, and Bernoulli Naive Bayes models.
+    \item Executing a parameter sweep over K-value in KNN, identifying the best $k$, and carrying out exhaustive hyperparameter tuning using Grid Search CV and Randomized Search CV.
+    \item Investigating the impact of query algorithms (KD-Tree vs. Ball-Tree) on execution times.
+    \item Benchmarking the classifiers across training/prediction times and cross-validation accuracies.
+\end{itemize}
+
+\section{Problem Statement}
+Email spam poses significant communication security risks and inefficiencies. The goal is to build a binary classifier to accurately categorize a given email as ``Spam'' (Class 1) or ``Ham'' (Class 0).
+\begin{itemize}
+    \item \textbf{Input:} A dataset comprising $N$ emails, where each email is represented by $D = 57$ continuous attributes containing word frequency percentages, character counts, and capitalized word run-lengths.
+    \item \textbf{Output:} A binary label $y \in \{0, 1\}$, where $0$ indicates benign email (ham) and $1$ indicates spam.
+    \item \textbf{Objective:} Develop classifier models using Naive Bayes and KNN, optimize their hyperparameters, and evaluate them on metrics such as Accuracy, Precision, Recall, F1-Score, and ROC-AUC. Runtimes must also be compared to understand performance-latency trade-offs.
+\end{itemize}
+
+\section{Dataset Description}
+The experiment is conducted on the UCI Spambase dataset. The structural parameters of the dataset are detailed below:
+
+\begin{longtable}{|p{6cm}|p{8cm}|}
+\hline
+Dataset Name & Spambase Dataset \\ \hline
+Dataset Source & UCI Machine Learning Repository \\ \hline
+Number of Samples & 4601 \\ \hline
+Number of Features & 57 continuous attributes (+1 target class variable) \\ \hline
+Number of Classes & 2 (0: Ham, 1: Spam) \\ \hline
+Missing Values & None (0 missing entries) \\ \hline
+Train-Test Split & 80\% Train (3680 samples), 20\% Test (921 samples) -- Stratified \\ \hline
+\end{longtable}
+
+The features consist of:
+\begin{itemize}
+    \item 48 features indicating the percentage of words in the email matching specific target words (e.g., ``make'', ``address'', ``our'').
+    \item 6 features indicating the percentage of characters matching specific glyphs (e.g., `\$', `!', `[').
+    \item 3 run-length features tracking uppercase letters (mean run length, maximum run length, and total run length).
+\end{itemize}
+
+\section{Exploratory Data Analysis}
+To comprehend the characteristics of the dataset, several visualization techniques were implemented.
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.55\linewidth]{spam_ham_distribution.png}
+\caption{Spam vs Ham Class Distribution}
+\label{fig:dist}
+\end{figure}
+\textbf{Inference:}
+The class distribution shows that 2,788 samples (60.6\%) are ham and 1,813 samples (39.4\%) are spam. Although a class imbalance exists, it is relatively moderate. It indicates that classification evaluation requires robust metrics like F1-Score and ROC-AUC, since accuracy alone can be misleading in extremely unbalanced contexts.
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.7\linewidth]{correlation_heatmap.png}
+\caption{Correlation Heatmap of first 15 features}
+\label{fig:corr}
+\end{figure}
+\textbf{Inference:}
+The heatmap of the correlation coefficients among the first 15 word-frequency features reveals that most attribute pairs share weak linear relationships, with coefficients close to zero. Some expected positive correlation is visible between logical word pairings. The general absence of multi-collinearity aligns well with the conditional independence assumption required for Naive Bayes models.
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.7\linewidth]{first_four_histograms.png}
+\caption{Frequency distribution histograms of first four features}
+\label{fig:hist}
+\end{figure}
+\textbf{Inference:}
+The histograms depict heavily right-skewed and zero-inflated distributions. For most word features, the percentage frequency is zero in the majority of emails. This sparsity indicates that classification techniques relying on distance metrics will be heavily skewed towards features with higher magnitudes and values, reinforcing the necessity of scale normalization.
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.8\linewidth]{first_ten_boxplots.png}
+\caption{Boxplots of first 10 features}
+\label{fig:box}
+\end{figure}
+\textbf{Inference:}
+The boxplots show a massive presence of outliers across all features, along with extreme differences in scale (some run-lengths are orders of magnitude larger than word frequencies). This visualization demonstrates that distance-based classifiers like KNN will suffer from scale bias if left unscaled, highlighting why feature standardization or normalization is required.
+
+\section{Data Preprocessing}
+Consistent preprocessing steps were executed:
+\begin{enumerate}
+    \item \textbf{Missing Value Handling:} Checked using \texttt{isnull().sum()} showing zero null cells. No imputation was needed.
+    \item \textbf{Feature Scaling:} Since KNN determines nearest neighbors using distance metrics, the 57 independent variables were scaled into the range $[0, 1]$ using MinMax Normalization:
+    \begin{equation}
+        X_{scaled} = \frac{X - X_{min}}{X_{max} - X_{min}}
+    \end{equation}
+    This scales uppercase count values and frequency percentages onto a shared interval, preventing features with large scales from dominates distance metrics.
+    \item \textbf{Train-Test Split:} An 80-20 stratified partition was applied, creating a training set of 3,680 instances and a test set of 921 instances. Stratification ensures that the $60.6:39.4$ ratio of ham to spam classes is preserved strictly in both train and test partitions.
+\end{enumerate}
+
+\section{Machine Learning Algorithm}
+
+\subsection{Naive Bayes Classifiers}
+Naive Bayes is a generative classification algorithm based on Bayes' Theorem with the assumption of conditional independence among features given the class label.
+
+\subsection*{Mathematical Formulation}
+Bayes' Theorem calculates the posterior probability of a class $y \in \{0, 1\}$ given a feature vector $\mathbf{x} = [x_1, x_2, \dots, x_d]^T$:
+\begin{equation}
+    P(y \mid \mathbf{x}) = \frac{P(\mathbf{x} \mid y) P(y)}{P(\mathbf{x})}
+\end{equation}
+Assuming conditional independence of features ($P(x_i \mid y, x_j) = P(x_i \mid y)$):
+\begin{equation}
+    P(y \mid \mathbf{x}) \propto P(y) \prod_{i=1}^{d} P(x_i \mid y)
+\end{equation}
+The predicted class label is:
+\begin{equation}
+    \hat{y} = \arg\max_{y \in \{0, 1\}} P(y) \prod_{i=1}^{d} P(x_i \mid y)
+\end{equation}
+
+Depending on the distribution model for likelihood $P(x_i \mid y)$, different sub-types are trained:
+\begin{enumerate}
+    \item \textbf{Gaussian Naive Bayes (GNB):} Assumes continuous features follow a normal distribution within each class:
+    \begin{equation}
+        P(x_i \mid y) = \frac{1}{\sqrt{2\pi\sigma_{y,i}^2}} \exp\left( - \frac{(x_i - \mu_{y,i})^2}{2\sigma_{y,i}^2} \right)
+    \end{equation}
+    \item \textbf{Multinomial Naive Bayes (MNB):} Typically models discrete term counts. For continuous MinMax normalized attributes (which act as pseudo-fractional counts), the likelihood is:
+    \begin{equation}
+        P(i \mid y) = \frac{N_{yi} + \alpha}{N_y + \alpha d}
+    \end{equation}
+    where $\alpha \ge 0$ represents the Laplace smoothing parameter.
+    \item \textbf{Bernoulli Naive Bayes (BNB):} Assumes ternary or binary variables. Independent features are binarized based on a user-defined threshold $t$:
+    \begin{equation}
+        P(x_i \mid y) = p_{y,i}^{B(x_i)} (1 - p_{y,i})^{1 - B(x_i)} \quad \text{where } B(x_i) = \mathbb{I}(x_i > t)
+    \end{equation}
+\end{enumerate}
+
+\subsection{K-Nearest Neighbors (KNN) Classifier}
+KNN is a non-parametric, instance-based supervised learning algorithm. Rather than constructing an explicit model during training, it saves historical test data and performs classification on Query points locally.
+
+\subsubsection{Working Principle}
+For any query sample $\mathbf{q}$, KNN identifies the $k$ closest data objects in the normalized training set based on a distance metric, and outputs a consensus vote of their class tags.
+\begin{itemize}
+    \item \textbf{Euclidean Distance ($L_2$ Norm):}
+    \begin{equation}
+        d_2(\mathbf{x}, \mathbf{q}) = \sqrt{\sum_{i=1}^{d} (x_i - q_i)^2}
+    \end{equation}
+    \item \textbf{Manhattan Distance ($L_1$ Norm):}
+    \begin{equation}
+        d_1(\mathbf{x}, \mathbf{q}) = \sum_{i=1}^{d} |x_i - q_i|
+    \end{equation}
+    \item \textbf{Weighting Schemes:}
+    \item \textit{Uniform:} Every neighbor's vote carries equal weight.
+    \item \textit{Distance:} Neighbor votes are weighted inversely to distance, $w = 1/d$, giving closer points larger influence.
+\end{itemize}
+
+\subsubsection{Acceleration Trees}
+Brute-force lookup is $O(Nd)$, which is slow. Acceleration structures subdivide search regions:
+\begin{enumerate}
+    \item \textbf{KD-Tree:} Space-partitioning tree that splits cells along axes progressively. Efficient for low to moderate dimensions ($d < 20$).
+    \item \textbf{Ball-Tree:} Groups points into nested hyper-spherical bounding areas. Better suited for high dimensions.
+\end{enumerate}
+
+\section{Experimental Setup}
+The experiments were conducted in the following hardware and software environment:
+
+\begin{table}[!ht]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+Component & Value \\
+\hline
+Python Version & 3.14.2 \\
+Scikit-Learn Version & 1.8.0 \\
+IDE & Jupyter Notebook / VS Code \\
+Operating System & Windows 11 \\
+Hardware & Intel/AMD Multi-Core CPU, x86\_64 \\
+\hline
+\end{tabular}
+\caption{System Configurations}
+\label{tab:system}
+\end{table}
+
+\section{Hyperparameter Selection}
+Hyperparameter spaces configured for exploration are described below:
+
+\begin{table}[!ht]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+Hyperparameter Field & Tested Grid / Range Space \\
+\hline
+Standard KNN $k$ Sweep & $k \in \{1, 3, 5, 7, 9, 11\}$ \\
+GridSearchCV Space & $k \in [1, 3, 5, 7, 9, 11]$, weights $\in$ [uniform, distance], \\
+& metric $\in$ [euclidean, manhattan], alg $\in$ [auto, kd\_tree, ball\_tree] \\
+RandomizedSearchCV Space & $k \in [1, 19]$, weights $\in$ [uniform, distance], \\
+& metric $\in$ [euclidean, manhattan], alg $\in$ [auto, kd\_tree, ball\_tree] \\
+\hline
+\end{tabular}
+\caption{Hyperparameter Search Space}
+\label{tab:hyper}
+\end{table}
+
+\section{Results}
+Below is the compiled performance output summarizing baseline versions of the models:
+
+\begin{table}[!ht]
+\centering
+\begin{tabular}{|l|c|c|c|c|c|c|}
+\hline
+Classifier Description & Accuracy & Precision & Recall & F1-score & ROC-AUC & Train Time (s) \\
+\hline
+Gaussian Naive Bayes & 0.832790 & 0.714579 & 0.958678 & 0.818824 & 0.922917 & 0.003824 \\
+Multinomial Naive Bayes & 0.893594 & 0.943144 & 0.776860 & 0.851964 & 0.962454 & 0.002870 \\
+Bernoulli Naive Bayes & 0.634093 & 0.964286 & 0.074380 & 0.138107 & 0.587503 & 0.006753 \\
+Best KNN ($k=5$) & 0.902280 & 0.876033 & 0.876033 & 0.876033 & 0.941944 & 0.002015 \\
+\hline
+\end{tabular}
+\caption{Classification Performance Summary}
+\label{tab:res}
+\end{table}
+
+\section{Result Visualization}
+
+\subsection{Naive Bayes Performance Plots}
+\begin{figure}[!ht]
+\centering
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{gnb_confusion_matrix.png}
+  \caption{GNB Confusion Matrix}
+  \label{fig:gnb-cm}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{mnb_confusion_matrix.png}
+  \caption{MNB Confusion Matrix}
+  \label{fig:mnb-cm}
+\end{minipage}
+\end{figure}
+
+\begin{figure}[!ht]
+\centering
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{gnb_roc_curve.png}
+  \caption{GNB ROC Curve}
+  \label{fig:gnb-roc}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{gnb_pr_curve.png}
+  \caption{GNB Precision-Recall Curve}
+  \label{fig:gnb-pr}
+\end{minipage}
+\end{figure}
+
+\textbf{Inference:}
+The Gaussian Naive Bayes model shows solid discriminative ability with an AUC of 0.9229. However, its confusion matrix reveals vertical imbalance; it identifies 348 out of 363 spam cases (Recall = 95.87\%) but causes 139 false positives, drag down Precision to 71.46\%. The Multinomial Naive Bayes model yields a superior AUC of 0.9625, and manages false positives much more effectively (only 17 false positives), resulting in a Precision of 94.31\%.
+
+\subsection{KNN Performance Plots}
+\begin{figure}[!ht]
+\centering
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{knn_accuracy_vs_k.png}
+  \caption{Accuracy vs. $k$ values}
+  \label{fig:k-acc}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{knn_confusion_matrix.png}
+  \caption{Best KNN Confusion Matrix}
+  \label{fig:knn-cm}
+\end{minipage}
+\end{figure}
+
+\begin{figure}[!ht]
+\centering
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{knn_roc_curve.png}
+  \caption{Best KNN ROC Curve}
+  \label{fig:knn-roc}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{knn_pr_curve.png}
+  \caption{Best KNN PR Curve}
+  \label{fig:knn-pr}
+\end{minipage}
+\end{figure}
+
+\textbf{Inference:}
+The parameter sweep reveals that $k=5$ achieves the highest baseline test accuracy of 90.23\%. Lower $k$ values ($k=1, 3$) display minor overfitting, while higher $k$ values ($k \ge 11$) experience underfitting as local decision boundaries soften. The confusion matrix for $k=5$ displays balanced errors, registering 318 true spam cases and 513 true ham cases, culminating in symmetric precision and recall metrics of 87.60\%.
+
+\subsection{Cross Validation and Execution Time Benchmarking}
+\begin{figure}[!ht]
+\centering
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{cv_comparison.png}
+  \caption{5-Fold Cross Validation Scores}
+  \label{fig:cv-comp}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{classifier_accuracy_comparison.png}
+  \caption{Classifier Comparison Bar Chart}
+  \label{fig:class-comp}
+\end{minipage}
+\end{figure}
+
+\begin{figure}[!ht]
+\centering
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{training_time_comparison.png}
+  \caption{Training Time Runtimes}
+  \label{fig:time-train}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{prediction_time_comparison.png}
+  \caption{Prediction Time Runtimes}
+  \label{fig:time-pred}
+\end{minipage}
+\end{figure}
+
+\textbf{Inference:}
+Cross-validation confirms that Best KNN is highly stable, achieving a mean accuracy of 89.87\% compared to Gaussian NB's 81.55\%. Evaluating runtimes highlights the core computational trade-offs: GNB and MNB train and predict near-instantaneously ($\sim 3$ ms). Conversely, while KNN train phase is very fast ($2.0$ ms) because it is a lazy learner, its prediction phase is orders of magnitude slower ($14.8$ ms) due to the need to compute distances to all training samples.
+
+\subsection{SearchCV Tuning Results}
+\begin{figure}[!ht]
+\centering
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{grid_search_heatmap.png}
+  \caption{GridSearchCV Accuracy Heatmap}
+  \label{fig:gs-heat}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+  \centering
+  \includegraphics[width=\linewidth]{random_search_distribution.png}
+  \caption{RandomizedSearchCV Scores}
+  \label{fig:rs-dist}
+\end{minipage}
+\end{figure}
+
+\textbf{Inference:}
+The GridSearchCV heatmap demonstrates that Manhattan distance consistently outperforms Euclidean distance across all tested $k$ configurations. The grid search located the parameter set \{\texttt{n\_neighbors}: 7, \texttt{metric}: `manhattan', \texttt{weights}: `distance'\} with a 5-fold CV score of 91.79\% in 15.59 seconds. RandomizedSearchCV sampled 20 iterations, locating a configuration of \{\texttt{n\_neighbors}: 12, \texttt{metric}: `manhattan', \texttt{weights}: `distance'\} with a slightly higher CV score of 91.85\% in only 3.07 seconds. This demonstrates that random search can be substantially faster ($5\times$) while yielding competitive or superior results compared to exhaustive search.
+
+\section{Discussion}
+A review of the experimental outputs reveals critical insights:
+\begin{itemize}
+    \item \textbf{Bernoulli Naive Bayes Limitation:} BNB yielded a low spam detection accuracy of 63.41\% and an extremely low Recall of 7.44\%. This occurs because BNB binarizes values based on threshold $t=0.5$. In the Spambase dataset, word frequency percentages are predominantly small fractions $<0.5$. This conversion to zero causes a severe loss of informational detail.
+    \item \textbf{Gaussian Naive Bayes Performance:} GNB achieved a high Recall of 95.87\% (only 15 missed spam instances). However, its assumption that features follow a normal distribution causes high false positives (139 ham emails flagged as spam), which decreases precision to 71.46\%. This indicates that GNB is overly sensitive for spam filtering, where false positives (filtering legitimate emails) must be minimized.
+    \item \textbf{Multinomial Naive Bayes Suitability:} MNB performed surprisingly well, achieving an accuracy of 89.36\% and a precision of 94.31\%. This demonstrates that tracking continuous word frequency magnitudes is highly effective for text filtering, keeping false positives low (1.85\% rate) which is crucial for email classification in production.
+    \item \textbf{KNN Acceleration Algorithms:} Table~\ref{tab:trees} shows empirical runtime testing of KD-Tree vs. Ball-Tree search for finding neighbors ($k=5$):
+    \begin{table}[!ht]
+    \centering
+    \begin{tabular}{|l|c|c|c|}
+    \hline
+    Tree Strategy & Accuracy & Training Time (s) & Prediction Time (s) \\
+    \hline
+    KD-Tree & 0.902280 & 0.021473 & 0.114488 \\
+    Ball-Tree & 0.902280 & 0.018124 & 0.122514 \\
+    \hline
+    \end{tabular}
+    \caption{KD-Tree vs. Ball-Tree Performance}
+    \label{tab:trees}
+    \end{table}
+    Both strategies resolve the exact same set of nearest neighbors, leading to identical accuracies. KD-Tree demonstrates slightly faster prediction lookup times ($114.4$ ms vs. $122.5$ ms) for our $57$-dimensional space.
+\end{itemize}
+
+\section{Conclusion}
+This study evaluated Naive Bayes and KNN algorithms on the Spambase dataset. 
+\begin{itemize}
+    \item Naive Bayes models (especially Multinomial) are highly suitable for high-throughput spam filtering, achieving high accuracy (89.36\%), exceptional precision (94.31\%), and near-zero prediction latency ($\sim 1.2$ ms).
+    \item K-Nearest Neighbors yields superior overall predictive performance, with 5-fold cross-validated accuracy reaching 91.85\% under optimal hyperparameters. However, this comes at the cost of high CPU prediction latency ($\sim 15$ ms in lazy setup; $\sim 114$ ms when building recursive search trees).
+    \item In a real-world email filtering system, Multinomial Naive Bayes is generally preferred due to its combined precision and low execution latency, which prevents legitimate emails from being incorrectly categorized as spam while minimizing prediction delays.
+\end{itemize}
+
+\section{References}
+\begin{enumerate}
+    \item F. Pedregosa et al., ``Scikit-learn: Machine Learning in Python,'' \textit{Journal of Machine Learning Research}, vol. 12, pp. 2825--2830, 2011.
+    \item M. Hopkins, E. Reeber, G. Forman, and J. Suermondt, ``Spambase Dataset,'' UCI Machine Learning Repository [Online]. Available: \url{https://archive.ics.uci.edu/ml/datasets/spambase}.
+    \item S. Russell and P. Norvig, \textit{Artificial Intelligence: A Modern Approach}, 4th ed. Englewood Cliffs, NJ, USA: Prentice Hall, 2020.
+\end{enumerate}
+
+\end{document}
