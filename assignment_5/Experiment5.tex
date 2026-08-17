@@ -1,0 +1,278 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{longtable}
+
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{ICS1512}
+\rhead{Machine Learning Algorithms Laboratory}
+\cfoot{\thepage}
+
+\lstset{
+language=Python,
+basicstyle=\ttfamily\small,
+numbers=left,
+frame=single,
+breaklines=true,
+showstringspaces=false
+}
+
+\begin{document}
+
+\begin{tabular}{|p{4cm}|p{11cm}|}
+\hline
+Experiment No. & 5 \\ \hline
+Experiment Title & Decision Tree and Random Forest: A Comparative Classification Study
+\footnote{\textbf{GitHub Repository: }\url{https://github.com/Barath-j593/ML-assignments}}\\ \hline
+Student Name & Barath \\ \hline
+Register Number & 3122247001011 \\ \hline
+Faculty & Dr. Poreddy Ajay Kumar Reddy \\ \hline
+Submission Date & 02/08/26 \\ \hline
+\end{tabular}
+
+\section{Objective}
+The main goal of this experiment is to build a standalone Decision Tree classifier and expand it into a Random Forest ensemble architecture. We evaluate how hyperparameter variations influence model overfitting versus generalizability, utilize 5-fold cross-validation for systematic hyperparameter tuning, and conduct a detailed performance comparison between single-tree and ensemble-tree estimators using the Wisconsin Diagnostic Breast Cancer dataset.
+
+\section{Problem Statement}
+This study addresses a binary clinical classification challenge using the Wisconsin Diagnostic Breast Cancer dataset, consisting of 30 quantitative features extracted from digitized fine-needle aspirate (FNA) images of breast tissue. The task is to accurately classify tissue samples as either malignant or benign. Specifically, we investigate the relationship between decision tree depth and model variance/overfitting, evaluate whether bootstrap aggregation (bagging) combined with feature subset selection in Random Forest enhances generalization over an isolated decision tree, and establish which architectural approach yields superior diagnostic reliability.
+
+\section{Dataset Description}
+\begin{longtable}{|p{6cm}|p{8cm}|}
+\hline
+Dataset Name & Wisconsin Diagnostic Breast Cancer (WDBC) \\ \hline
+Dataset Source & UCI Machine Learning Repository -- \url{https://archive.ics.uci.edu} (loaded via \texttt{sklearn.datasets.load\_breast\_cancer}) \\ \hline
+Number of Samples & 569 \\ \hline
+Number of Features & 30 numerical attributes (mean, standard error, and ``worst'' value of 10 cell-nucleus measurements) \\ \hline
+Number of Classes & 2 (357 benign / 212 malignant) \\ \hline
+Missing Values & 0 \\ \hline
+Train-Test Split & 80:20 stratified (455 train / 114 test), \texttt{random\_state=42} \\ \hline
+\end{longtable}
+
+\section{Exploratory Data Analysis}
+Include all relevant visualizations.
+\begin{itemize}
+\item Dataset overview
+\item Statistical summary
+\item Missing value analysis
+\item Class distribution
+\item Correlation matrix
+\item Feature distribution
+\end{itemize}
+
+\subsection*{Class Distribution}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.5\linewidth]{class_distribution.png}
+\caption{Class distribution -- Breast Cancer Wisconsin (Diagnostic)}
+\end{figure}
+\textbf{Inference:} The sample distribution exhibits a moderate class imbalance, comprising 357 benign cases (62.7\%) and 212 malignant cases (37.3\%). Because the dataset contains zero null or missing entries across all attributes, missing-value imputation and associated plotting steps were unnecessary.
+
+\subsection*{Correlation Matrix}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\linewidth]{correlation_heatmap.png}
+\caption{Correlation heatmap -- top 12 features correlated with diagnosis}
+\end{figure}
+\textbf{Inference:} Attributes such as ``worst concave points'', ``worst perimeter'', ``worst radius'', and ``mean concave points'' demonstrate strong linear association with the target diagnosis (absolute correlation values $|r| > 0.70$). This aligns with clinical domain knowledge, where enlarged cell nuclear dimensions and structural irregularities strongly correlate with malignant pathology. Interestingly, these exact variables also rank as top features in Random Forest feature importance (Section 12) and serve as root-level decision nodes in the decision tree visualization (Section 13), demonstrating consistent feature prioritization across methods.
+
+\section{Data Preprocessing}
+Explain:
+\begin{itemize}
+\item \textbf{Label encoding:} The target variable is natively mapped to binary integers by scikit-learn (0 representing malignant and 1 representing benign), obviating any additional manual label encoding.
+\item \textbf{Missing value handling:} Complete data integrity is observed across all 569 instances and 30 attributes, eliminating the need for data imputation procedures.
+\item \textbf{Feature scaling:} Monotonic feature scaling (such as standardization or min-max normalization) is unnecessary because tree-based models make axis-aligned partition splits based on feature rank order, making them naturally invariant to feature scale.
+\item \textbf{Train-test split:} An 80:20 stratified random train-test split was executed (455 training samples and 114 testing samples), preserving the baseline class proportions across both training and evaluation subsets.
+\end{itemize}
+
+\section{Machine Learning Algorithm}
+Explain:
+\begin{itemize}
+\item \textbf{Working principle:} A Decision Tree constructs a hierarchical set of decision rules by recursively splitting the input space based on feature values that maximize impurity reduction (Gini impurity or information entropy)... Random Forest expands upon this by constructing an ensemble of decorrelated decision trees. Each tree is trained on a distinct bootstrap sample derived from the original dataset (bagging), considering a randomized subset of candidate features at each node split. Final class assignments are determined through majority voting.
+\item \textbf{Mathematical formulation:}
+$$\text{Gini}(t) = 1 - \sum_{c} p(c\mid t)^2, \qquad
+\text{Entropy}(t) = -\sum_{c} p(c\mid t)\log_2 p(c\mid t)$$
+$$\hat{y} = \operatorname*{mode}_{i=1,\dots,B} T_i(x)$$
+where $T_i$ is the $i$-th tree trained on a bootstrap sample, and $B$ is the number of trees
+(\texttt{n\_estimators}).
+\item \textbf{Advantages:} Single decision trees provide high interpretability and transparent decision logic without requiring input normalization. Random Forests effectively mitigate model variance by aggregating predictions from multiple decorrelated decision trees, leading to stronger generalization and robustness against noise.
+\item \textbf{Limitations:} Unconstrained decision trees are inherently sensitive to small dataset perturbations and suffer from high variance/overfitting when tree depth is unrestricted. On the other hand, Random Forests sacrifice full visual interpretability and demand higher computational resources for model training and grid tuning.
+\end{itemize}
+
+\section{Experimental Setup}
+\begin{tabular}{ll}
+\toprule
+Python Version & \\
+Scikit-Learn Version & \\
+IDE & Jupyter Notebook \\
+Operating System & \\
+Hardware & \\
+\bottomrule
+\end{tabular}
+
+\section{Hyperparameter Selection}
+
+\begin{longtable}{|p{3.2cm}|p{2.6cm}|p{5.5cm}|p{2.3cm}|}
+\hline
+\textbf{Model} & \textbf{Search Method} & \textbf{Best Parameters} & \textbf{Best CV Accuracy} \\ \hline
+\endhead
+Decision Tree & Grid Search & criterion=gini, max\_depth=5, min\_samples\_split=2, min\_samples\_leaf=4 & 0.9385 \\ \hline
+Random Forest & Grid Search & n\_estimators=100, max\_depth=10, max\_features=log2, bootstrap=True & 0.9648 \\ \hline
+\end{longtable}
+
+\textbf{Note:} Decision Tree was searched over criterion $\in \{gini, entropy\} \times
+max\_depth \in \{2,3,4,5,7,10,None\} \times min\_samples\_split \in \{2,5,10\} \times
+min\_samples\_leaf \in \{1,2,4\}$ (126 combinations). Random Forest was searched over
+n\_estimators $\in \{50,100,200\} \times max\_depth \in \{3,5,10,None\} \times max\_features
+\in \{sqrt, log2\} \times bootstrap \in \{True, False\}$ (48 combinations). Both used 5-fold
+cross-validation optimizing accuracy.
+
+\subsection*{Decision Tree Cross-Fold Results (summarized by criterion and max\_depth)}
+\begin{longtable}{|p{3cm}|p{3cm}|p{3.5cm}|}
+\hline
+\textbf{Criterion} & \textbf{Max Depth} & \textbf{Avg CV Accuracy} \\ \hline
+\endhead
+gini & 2 & 0.9311 \\ \hline
+gini & 3 & 0.9333 \\ \hline
+gini & 5 & \textbf{0.9385} \\ \hline
+gini & 10 & 0.9233 \\ \hline
+gini & None & 0.9226 \\ \hline
+entropy & 2 & 0.9209 \\ \hline
+entropy & 3 & 0.9333 \\ \hline
+entropy & 5 & 0.9263 \\ \hline
+entropy & 10 & 0.9275 \\ \hline
+entropy & None & 0.9250 \\ \hline
+\end{longtable}
+\textbf{Inference:} Validation performance peaks when restricting tree depth to moderate levels (\texttt{max\_depth=3--5}), whereas fully grown trees (\texttt{max\_depth=None}) exhibit degraded cross-validation scores due to training set noise memorization. Gini impurity and Information Entropy yield nearly identical performance, with Gini achieving a slight edge at depth 5.
+
+\subsection*{Random Forest Cross-Fold Results (summarized by n\_estimators, max\_depth, max\_features)}
+\begin{longtable}{|p{2.3cm}|p{2.3cm}|p{2.7cm}|p{3cm}|}
+\hline
+\textbf{n\_estimators} & \textbf{Max Depth} & \textbf{Max Features} & \textbf{Avg CV Accuracy} \\ \hline
+\endhead
+50 & 10 & log2 & 0.9615 \\ \hline
+50 & 10 & sqrt & 0.9582 \\ \hline
+100 & 10 & log2 & \textbf{0.9626} \\ \hline
+100 & 10 & sqrt & 0.9604 \\ \hline
+100 & None & log2 & 0.9648 \\ \hline
+200 & 10 & log2 & 0.9615 \\ \hline
+200 & None & log2 & 0.9626 \\ \hline
+\end{longtable}
+\textbf{Inference:} Cross-validation accuracy stabilizes once the ensemble size exceeds 50 estimators, with \texttt{max\_features=log2} slightly outperforming \texttt{sqrt} across configurations. Crucially, unlike single trees, unconstrained tree depths in Random Forest do not cause performance decay, demonstrating bagging's effectiveness in controlling individual tree variance.
+
+\section{Results}
+
+\begin{longtable}{|p{4.5cm}|p{2.3cm}|p{2.3cm}|}
+\hline
+\textbf{Metric} & \textbf{Decision Tree (tuned)} & \textbf{Random Forest (tuned)} \\ \hline
+\endhead
+Accuracy & 0.9035 & \textbf{0.9561} \\ \hline
+Precision & 0.9420 & \textbf{0.9589} \\ \hline
+Recall & 0.9028 & \textbf{0.9722} \\ \hline
+F1-score & 0.9220 & \textbf{0.9655} \\ \hline
+ROC-AUC & 0.9358 & \textbf{0.9924} \\ \hline
+Training Time (s) & 0.0061 & 0.1489 \\ \hline
+\end{longtable}
+
+\section{Result Visualization}
+
+Include all graphs generated during the experiment.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.7\linewidth]{depth_overfitting_curve.png}
+\caption{Decision Tree: effect of max\_depth on train/test accuracy}
+\end{figure}
+\textbf{Inference:} Training accuracy rapidly reaches 1.0 by \texttt{max\_depth=7}, while test accuracy peaks around \texttt{max\_depth=3--4} ($\approx$0.939) before declining to a lower baseline ($\approx$0.912) as depth increases. This visualizes a classic overfitting scenario where excessive depth forces the tree to model instance-specific noise rather than underlying patterns.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.6\linewidth]{n_estimators_curve.png}
+\caption{Random Forest: effect of n\_estimators on test accuracy}
+\end{figure}
+\textbf{Inference:} Test accuracy improves from 0.947 with a single tree to a steady plateau of 0.956 around 25 estimators, remaining stable as more trees are added. This confirms that scaling ensemble size reduces overall variance without inducing model overfitting.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\linewidth]{confusion_matrices.png}
+\caption{Confusion matrices -- best Decision Tree vs. best Random Forest}
+\end{figure}
+\textbf{Inference:} The Random Forest confusion matrix displays a noticeable reduction in both false positive and false negative classifications compared to the Decision Tree. Notably, false negatives (missed malignant diagnoses) are reduced, which is critical in clinical diagnostic settings.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.55\linewidth]{roc_curves.png}
+\caption{ROC curves -- best Decision Tree vs. best Random Forest}
+\end{figure}
+\textbf{Inference:} The Random Forest ROC curve consistently lies above the Decision Tree curve, achieving an AUC of 0.992 versus 0.936 for the single tree. This highlights the superior probabilistic classification capability of the ensemble model.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.55\linewidth]{cv_accuracy.png}
+\caption{5-fold cross-validation accuracy -- tuned Decision Tree vs. tuned Random Forest}
+\end{figure}
+\textbf{Inference:} Random Forest achieves higher accuracy across all 5 cross-validation folds (averaging 0.9596 vs. 0.9245) with lower fold-to-fold variance. This provides empirical proof of bagging's variance reduction across resampled datasets.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.7\linewidth]{feature_importance.png}
+\caption{Random Forest -- top 10 feature importances}
+\end{figure}
+\textbf{Inference:} ``Worst concave points'', ``worst area'', and ``worst radius'' emerge as the top three features in Gini importance. This strong alignment with both the correlation heatmap (Section 4) and the root splits of the decision tree (Section 13) confirms consistent feature ranking.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{tree_visualization.png}
+\caption{Decision tree visualization (max\_depth=3, for interpretability)}
+\end{figure}
+\textbf{Inference:} The root split evaluates ``worst radius'' ($\le 16.795$), separating 266 out of 271 benign samples into a clean leaf node. This illustrates the high transparency and direct interpretability of shallow decision trees.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.7\linewidth]{classifier_comparison.png}
+\caption{Best Decision Tree vs. best Random Forest -- Accuracy / Precision / Recall / F1}
+\end{figure}
+\textbf{Inference:} Random Forest outperforms the Decision Tree across all metrics, with the most pronounced improvement observed in Recall (0.972 vs. 0.903), directly minimizing clinically dangerous false-negative predictions.
+
+\section{5-Fold Cross-Validation Performance Comparison}
+\begin{longtable}{|p{2.3cm}|p{1.6cm}|p{1.6cm}|p{1.6cm}|p{1.6cm}|p{1.6cm}|p{1.8cm}|}
+\hline
+\textbf{Model} & \textbf{Fold 1} & \textbf{Fold 2} & \textbf{Fold 3} & \textbf{Fold 4} & \textbf{Fold 5} & \textbf{Average} \\ \hline
+\endhead
+Decision Tree & 0.9211 & 0.8947 & 0.9386 & 0.9298 & 0.9381 & 0.9245 \\ \hline
+Random Forest & 0.9649 & 0.9561 & 0.9561 & 0.9561 & 0.9646 & \textbf{0.9596} \\ \hline
+\end{longtable}
+
+\section{Observation Questions}
+\begin{enumerate}
+\item \textbf{How does tree depth affect overfitting in Decision Trees?} Increasing decision tree depth allows the model to create increasingly complex partition boundaries. As shown in Figure 7, training accuracy reaches 100\% at depth 7, whereas test accuracy peaks around depth 3--4 and degrades thereafter. This divergence indicates that deep trees fit instance-level training noise, leading to poor generalization.
+\item \textbf{Which hyperparameter had the greatest impact on performance?} For the single Decision Tree, \texttt{max\_depth} exerted the strongest influence on model performance, with CV accuracy varying significantly across depth values. For Random Forest, performance remained relatively stable across the parameter space (0.950--0.965), showing that ensemble methods are less sensitive to hyperparameter tuning than single trees.
+\item \textbf{How does Random Forest improve generalization?} Random Forest enhances generalization by combining bootstrap aggregation (bagging) with random feature selection at each node split. This decorrelates individual base trees, allowing their prediction errors to average out during majority voting, which prevents the test set performance degradation seen in deep single trees.
+\item \textbf{Did ensemble learning always improve performance? Why or why not?} In this experiment, Random Forest consistently outperformed the decision tree across all evaluation metrics and cross-validation folds. Ensembling is especially effective when base model errors are driven by high variance (as in decision trees). On datasets where base estimators already achieve low variance and low bias, the performance gain from ensembling would be less pronounced.
+\end{enumerate}
+
+\section{Discussion}
+Experimental results on the Wisconsin Diagnostic Breast Cancer dataset illustrate the classic trade-off between model variance and generalization. While unconstrained decision trees achieve perfect training accuracy at the expense of test performance, Random Forest effectively controls variance through bagging and random feature sub-sampling. This leads to higher overall accuracy (0.956 vs. 0.904) and superior ROC-AUC (0.992 vs. 0.936) with minimal computational overhead (0.149s vs 0.006s). Furthermore, feature importance rankings align closely with correlation analysis and decision tree splits, reinforcing model interpretability.
+
+\section{Conclusion}
+The Random Forest classifier (\texttt{n\_estimators=100}, \texttt{max\_features=log2}, unconstrained depth) demonstrated superior performance over the tuned Decision Tree across all evaluation metrics and cross-validation folds. Most significantly, Random Forest achieved a higher recall score, reducing false negatives in breast cancer detection. While single decision trees offer direct visual interpretability, hyperparameter-tuned Random Forests provide substantial improvements in stability and diagnostic accuracy.
+
+\section{References}
+\begin{enumerate}[label={[\arabic*]}]
+\item Scikit-learn Documentation, ``Decision Trees,'' \url{https://scikit-learn.org/stable/modules/tree.html}
+\item Scikit-learn Documentation, ``Random Forests,'' \url{https://scikit-learn.org/stable/modules/ensemble.html#forest}
+\item UCI Machine Learning Repository, ``Breast Cancer Wisconsin (Diagnostic) Data Set,'' \url{https://archive.ics.uci.edu}
+\end{enumerate}
+
+\end{document}
